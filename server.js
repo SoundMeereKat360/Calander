@@ -22,10 +22,12 @@ if (HAS_CLIENT_BUILD) {
 // Persistent storage for Canvas tokens
 const TOKENS_FILE = path.join(__dirname, 'canvas-tokens.json');
 const EVENTS_FILE = path.join(__dirname, 'events.json');
+const CANVAS_EVENTS_FILE = path.join(__dirname, 'canvas-events.json');
 
 // Load tokens from file
 let canvasTokens = {};
 let manualEvents = [];
+let syncedCanvasEvents = {};
 try {
   if (fs.existsSync(TOKENS_FILE)) {
     canvasTokens = JSON.parse(fs.readFileSync(TOKENS_FILE, 'utf8'));
@@ -44,6 +46,15 @@ try {
   manualEvents = [];
 }
 
+try {
+  if (fs.existsSync(CANVAS_EVENTS_FILE)) {
+    syncedCanvasEvents = JSON.parse(fs.readFileSync(CANVAS_EVENTS_FILE, 'utf8'));
+  }
+} catch (error) {
+  console.error('Error loading synced Canvas events:', error);
+  syncedCanvasEvents = {};
+}
+
 // Save tokens to file
 function saveTokens() {
   try {
@@ -58,6 +69,14 @@ function saveEvents() {
     fs.writeFileSync(EVENTS_FILE, JSON.stringify(manualEvents, null, 2));
   } catch (error) {
     console.error('Error saving events:', error);
+  }
+}
+
+function saveCanvasEvents() {
+  try {
+    fs.writeFileSync(CANVAS_EVENTS_FILE, JSON.stringify(syncedCanvasEvents, null, 2));
+  } catch (error) {
+    console.error('Error saving synced Canvas events:', error);
   }
 }
 
@@ -87,30 +106,14 @@ function foldIcsLine(line = '') {
   return chunks.join('\r\n');
 }
 
-async function getConnectedCanvasEvents() {
-  const events = [];
-
-  for (const [userId, userData] of Object.entries(canvasTokens)) {
-    if (!userData || !userData.token) {
-      continue;
-    }
-
-    try {
-      const domain = userData.domain || 'tmcc.instructure.com';
-      const baseUrl = `https://${domain}/api/v1`;
-      const canvas = new CanvasService(userData.token, baseUrl);
-      const accountEvents = await canvas.getCanvasEvents();
-      events.push(...accountEvents.map((event) => ({ ...event, accountUser: userId })));
-    } catch (error) {
-      console.error(`Error building calendar feed for ${userId}:`, error.message);
-    }
-  }
-
-  return events;
+function getConnectedCanvasEvents() {
+  return Object.entries(syncedCanvasEvents).flatMap(([userId, events]) =>
+    (Array.isArray(events) ? events : []).map((event) => ({ ...event, accountUser: userId }))
+  );
 }
 
 async function getAllCalendarEvents() {
-  const canvasEvents = await getConnectedCanvasEvents();
+  const canvasEvents = getConnectedCanvasEvents();
   return [...manualEvents, ...canvasEvents];
 }
 
@@ -249,6 +252,8 @@ app.post('/api/canvas/sync', async (req, res) => {
     const baseUrl = `https://${domain}/api/v1`;
     const canvas = new CanvasService(userData.token, baseUrl);
     const events = await canvas.getCanvasEvents();
+    syncedCanvasEvents[userId] = events;
+    saveCanvasEvents();
 
     res.json({
       success: true,
@@ -350,7 +355,9 @@ app.post('/api/canvas/disconnect', (req, res) => {
   try {
     const userId = req.query.username || 'default';
     delete canvasTokens[userId];
+    delete syncedCanvasEvents[userId];
     saveTokens();
+    saveCanvasEvents();
 
     res.json({ success: true, message: 'Canvas disconnected successfully' });
   } catch (error) {

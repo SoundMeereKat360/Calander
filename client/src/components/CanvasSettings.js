@@ -29,6 +29,7 @@ const defaultStatus = () => ({
 });
 
 const API_BASE = '';
+const HIDDEN_COURSES_STORAGE_KEY = 'ai-calendar-hidden-courses';
 
 const CanvasSettings = ({
   onSyncAssignments,
@@ -44,7 +45,15 @@ const CanvasSettings = ({
   const [showTmccCourses, setShowTmccCourses] = useState(true);
   const [showHiddenCourses, setShowHiddenCourses] = useState(false);
   const [courses, setCourses] = useState([]);
-  const [hiddenCourseNames, setHiddenCourseNames] = useState([]);
+  const [hiddenCourseNames, setHiddenCourseNames] = useState(() => {
+    try {
+      const stored = window.localStorage.getItem(HIDDEN_COURSES_STORAGE_KEY);
+      const parsed = stored ? JSON.parse(stored) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  });
   const [courseActionsOpen, setCourseActionsOpen] = useState('');
   const refreshInFlightRef = useRef(false);
   const initialAutoSyncRef = useRef(false);
@@ -269,6 +278,14 @@ const CanvasSettings = ({
     initialAutoSyncRef.current = true;
     autoConnectAndSync();
   }, [autoConnectAndSync]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(HIDDEN_COURSES_STORAGE_KEY, JSON.stringify(hiddenCourseNames));
+    } catch (error) {
+      // Ignore storage failures so Canvas sync still works normally.
+    }
+  }, [hiddenCourseNames]);
 
   const handleSync = async () => {
     await autoConnectAndSync();
