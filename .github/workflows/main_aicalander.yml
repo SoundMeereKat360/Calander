@@ -31,7 +31,7 @@ jobs:
         run: npm ci
 
       - name: Install client dependencies
-        run: npm ci --prefix client
+        run: npm install --prefix client
 
       - name: Build React app for production
         run: npm run build:azure
