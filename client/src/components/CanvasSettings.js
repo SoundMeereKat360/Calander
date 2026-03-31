@@ -28,7 +28,7 @@ const defaultStatus = () => ({
   user: null
 });
 
-const API_BASE = `${window.location.protocol}//${window.location.hostname}:5000`;
+const API_BASE = '';
 
 const CanvasSettings = ({
   onSyncAssignments,
