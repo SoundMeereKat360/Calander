@@ -73,6 +73,20 @@ function formatIcsDate(dateString) {
   return new Date(dateString).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
 }
 
+function foldIcsLine(line = '') {
+  const maxLength = 74;
+  if (line.length <= maxLength) {
+    return line;
+  }
+
+  const chunks = [];
+  for (let index = 0; index < line.length; index += maxLength) {
+    chunks.push(index === 0 ? line.slice(index, index + maxLength) : ` ${line.slice(index, index + maxLength)}`);
+  }
+
+  return chunks.join('\r\n');
+}
+
 async function getConnectedCanvasEvents() {
   const events = [];
 
@@ -270,18 +284,23 @@ app.get('/api/calendar/feed/:token', async (req, res) => {
         descriptionParts.push(`Canvas link: ${event.url}`);
       }
 
-      return [
+      const lines = [
         'BEGIN:VEVENT',
         `UID:${escapeIcsText(event.id)}@ai-calendar-agent`,
         `DTSTAMP:${nowStamp}`,
         `DTSTART:${formatIcsDate(event.start)}`,
-        `DTEND:${formatIcsDate(event.end || event.start)}`,
         `SUMMARY:${escapeIcsText(event.title)}`,
         event.course ? `CATEGORIES:${escapeIcsText(event.course)}` : '',
         descriptionParts.length > 0 ? `DESCRIPTION:${escapeIcsText(descriptionParts.join('\n\n'))}` : '',
         event.url ? `URL:${escapeIcsText(event.url)}` : '',
         'END:VEVENT'
-      ].filter(Boolean).join('\r\n');
+      ];
+
+      if (event.end && event.end !== event.start) {
+        lines.splice(4, 0, `DTEND:${formatIcsDate(event.end)}`);
+      }
+
+      return lines.filter(Boolean).map(foldIcsLine).join('\r\n');
     }).join('\r\n');
 
     const ics = [
@@ -290,11 +309,16 @@ app.get('/api/calendar/feed/:token', async (req, res) => {
       'PRODID:-//AI Calendar Agent//EN',
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
+      'X-WR-CALNAME:AI Calendar Agent',
+      'X-WR-TIMEZONE:UTC',
+      'X-PUBLISHED-TTL:PT6H',
       body,
       'END:VCALENDAR'
-    ].join('\r\n');
+    ].map(foldIcsLine).join('\r\n');
 
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', 'inline; filename="ai-calendar-agent.ics"');
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
     res.send(ics);
   } catch (error) {
     res.status(500).json({ error: error.message });
