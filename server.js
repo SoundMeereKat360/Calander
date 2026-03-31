@@ -28,6 +28,8 @@ const CANVAS_EVENTS_FILE = path.join(__dirname, 'canvas-events.json');
 let canvasTokens = {};
 let manualEvents = [];
 let syncedCanvasEvents = {};
+let lastCanvasRefreshAt = null;
+let canvasRefreshInFlight = false;
 try {
   if (fs.existsSync(TOKENS_FILE)) {
     canvasTokens = JSON.parse(fs.readFileSync(TOKENS_FILE, 'utf8'));
@@ -110,6 +112,55 @@ function getConnectedCanvasEvents() {
   return Object.entries(syncedCanvasEvents).flatMap(([userId, events]) =>
     (Array.isArray(events) ? events : []).map((event) => ({ ...event, accountUser: userId }))
   );
+}
+
+async function refreshCanvasEventsForUser(userId, userData) {
+  if (!userData || !userData.token) {
+    syncedCanvasEvents[userId] = [];
+    return [];
+  }
+
+  const domain = userData.domain || 'tmcc.instructure.com';
+  const baseUrl = `https://${domain}/api/v1`;
+  const canvas = new CanvasService(userData.token, baseUrl);
+  const events = await canvas.getCanvasEvents();
+  syncedCanvasEvents[userId] = events;
+  return events;
+}
+
+async function refreshAllCanvasEvents() {
+  if (canvasRefreshInFlight) {
+    return {
+      refreshedAccounts: Object.keys(syncedCanvasEvents).length,
+      events: getConnectedCanvasEvents(),
+      startedAt: lastCanvasRefreshAt
+    };
+  }
+
+  canvasRefreshInFlight = true;
+  let refreshedAccounts = 0;
+
+  try {
+    for (const [userId, userData] of Object.entries(canvasTokens)) {
+      try {
+        await refreshCanvasEventsForUser(userId, userData);
+        refreshedAccounts += 1;
+      } catch (error) {
+        console.error(`Error refreshing Canvas events for ${userId}:`, error.message);
+      }
+    }
+
+    saveCanvasEvents();
+    lastCanvasRefreshAt = new Date().toISOString();
+
+    return {
+      refreshedAccounts,
+      events: getConnectedCanvasEvents(),
+      refreshedAt: lastCanvasRefreshAt
+    };
+  } finally {
+    canvasRefreshInFlight = false;
+  }
 }
 
 async function getAllCalendarEvents() {
@@ -248,12 +299,9 @@ app.post('/api/canvas/sync', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated with Canvas' });
     }
 
-    const domain = userData.domain || 'tmcc.instructure.com';
-    const baseUrl = `https://${domain}/api/v1`;
-    const canvas = new CanvasService(userData.token, baseUrl);
-    const events = await canvas.getCanvasEvents();
-    syncedCanvasEvents[userId] = events;
+    const events = await refreshCanvasEventsForUser(userId, userData);
     saveCanvasEvents();
+    lastCanvasRefreshAt = new Date().toISOString();
 
     res.json({
       success: true,
@@ -268,14 +316,38 @@ app.post('/api/canvas/sync', async (req, res) => {
 app.get('/api/calendar/subscription', (req, res) => {
   const baseUrl = `${req.protocol}://${req.get('host')}`;
   res.json({
-    feedUrl: `${baseUrl}/api/calendar/feed/${FEED_TOKEN}`
+    feedUrl: `${baseUrl}/api/calendar/feed/${FEED_TOKEN}`,
+    webcalUrl: `webcal://${req.get('host')}/api/calendar/feed/${FEED_TOKEN}`,
+    lastRefreshedAt: lastCanvasRefreshAt
   });
+});
+
+app.post('/api/calendar/refresh', async (req, res) => {
+  try {
+    const result = await refreshAllCanvasEvents();
+    res.json({
+      success: true,
+      refreshedAccounts: result.refreshedAccounts,
+      syncedEvents: result.events.length,
+      refreshedAt: result.refreshedAt || lastCanvasRefreshAt
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.get('/api/calendar/feed/:token', async (req, res) => {
   try {
     if (req.params.token !== FEED_TOKEN) {
       return res.status(403).send('Forbidden');
+    }
+
+    const refreshThresholdMs = 15 * 60 * 1000;
+    const lastRefreshAge = lastCanvasRefreshAt ? Date.now() - new Date(lastCanvasRefreshAt).getTime() : Infinity;
+    if (!canvasRefreshInFlight && lastRefreshAge > refreshThresholdMs) {
+      refreshAllCanvasEvents().catch((error) => {
+        console.error('Background calendar refresh failed:', error.message);
+      });
     }
 
     const events = await getAllCalendarEvents();

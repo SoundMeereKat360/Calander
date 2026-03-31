@@ -44,6 +44,8 @@ function App() {
   const [headerTime, setHeaderTime] = useState(new Date());
   const [primaryUserName, setPrimaryUserName] = useState('');
   const [subscriptionUrl, setSubscriptionUrl] = useState('');
+  const [subscriptionRefreshTime, setSubscriptionRefreshTime] = useState('');
+  const [refreshingSubscription, setRefreshingSubscription] = useState(false);
 
   useEffect(() => {
     fetchEvents();
@@ -77,9 +79,10 @@ function App() {
 
   const fetchSubscriptionUrl = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/calendar/subscription');
+      const response = await fetch('/api/calendar/subscription');
       const data = await response.json();
       setSubscriptionUrl(data.feedUrl || '');
+      setSubscriptionRefreshTime(data.lastRefreshedAt || '');
     } catch (error) {
       console.error('Error fetching subscription URL:', error);
     }
@@ -188,6 +191,30 @@ function App() {
     }
   };
 
+  const handleRefreshSubscription = async () => {
+    try {
+      setRefreshingSubscription(true);
+      const response = await fetch('/api/calendar/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to refresh subscription feed');
+      }
+
+      setSubscriptionRefreshTime(data.refreshedAt || new Date().toISOString());
+      await fetchEvents();
+      alert(`Subscription feed updated with ${data.syncedEvents || 0} synced events.`);
+    } catch (error) {
+      console.error('Error refreshing subscription feed:', error);
+      alert(error.message || 'Failed to refresh subscription feed');
+    } finally {
+      setRefreshingSubscription(false);
+    }
+  };
+
   const handleExportCalendar = () => {
     const nowStamp = formatIcsDate(new Date().toISOString());
     const calendarEvents = events.map((event) => {
@@ -276,6 +303,20 @@ function App() {
           <button onClick={handleCopySubscriptionUrl} className="subscription-btn" disabled={!subscriptionUrl}>
             Copy Subscription URL
           </button>
+
+          <button
+            onClick={handleRefreshSubscription}
+            className="subscription-refresh-btn"
+            disabled={refreshingSubscription}
+          >
+            {refreshingSubscription ? 'Updating Subscription...' : 'Update Subscription Feed'}
+          </button>
+
+          {subscriptionRefreshTime && (
+            <div className="subscription-refresh-time">
+              Feed updated: {new Date(subscriptionRefreshTime).toLocaleString()}
+            </div>
+          )}
 
           <AIScheduler />
         </div>
