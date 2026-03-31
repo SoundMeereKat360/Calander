@@ -28,7 +28,10 @@ jobs:
             client/package-lock.json
 
       - name: Install root dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Install client dependencies
+        run: npm ci --prefix client
 
       - name: Build React app for production
         run: npm run build:azure
