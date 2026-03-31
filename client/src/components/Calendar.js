@@ -20,7 +20,8 @@ const sanitizeCanvasHtml = (html) => {
         node.removeAttribute(attr.name);
       }
 
-      if ((name === 'href' || name === 'src') && value.trim().toLowerCase().startsWith('javascript:')) {
+      const normalizedValue = value.trim().toLowerCase();
+      if ((name === 'href' || name === 'src') && normalizedValue.startsWith(`java${'script:'}`)) {
         node.removeAttribute(attr.name);
       }
     });
@@ -77,7 +78,7 @@ const buildAssignmentSummary = (event) => {
   const text = extractPlainText(event?.description || '');
   const structuredSegments = extractStructuredSegments(event?.description || '');
   const sentenceSegments = text
-    .split(/(?<=[.!?])\s+|\s*[•\-]\s+|\s*\d+\.\s+/)
+    .split(/(?<=[.!?])\s+|\s*[•-]\s+|\s*\d+\.\s+/)
     .map((part) => part.trim())
     .filter(Boolean);
   const segments = [
@@ -125,7 +126,7 @@ const buildAssignmentSummary = (event) => {
       const heading = (value.heading || '').toLowerCase();
       const keywordHits = preferredKeywords.filter((word) => lower.includes(word)).length;
       const weakHits = weakKeywords.filter((word) => lower.includes(word)).length;
-      const listLikeBonus = value.tag === 'li' ? 3 : /^(\d+[\).]|[-*•])/.test(value.text) ? 2 : 0;
+      const listLikeBonus = value.tag === 'li' ? 3 : /^(\d+[).]|[-*•])/.test(value.text) ? 2 : 0;
       const submitBonus = /(submit|upload|reply|post|attach|complete)/.test(lower) ? 4 : 0;
       const headingBonus = /(instruction|requirement|submit|task|steps|checklist|what to do)/.test(heading) ? 5 : 0;
       const headingPenalty = /(overview|welcome|introduction|summary|module)/.test(heading) ? 3 : 0;
@@ -148,7 +149,7 @@ const buildAssignmentSummary = (event) => {
 
     const cleaned = item.text
       .replace(/\s+/g, ' ')
-      .replace(/^(\d+[\).]|[-*•])\s*/, '')
+      .replace(/^(\d+[).]|[-*•])\s*/, '')
       .trim();
     if (cleaned.length < 12) {
       return;

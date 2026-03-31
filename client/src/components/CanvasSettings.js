@@ -47,16 +47,13 @@ const CanvasSettings = ({
   const [hiddenCourseNames, setHiddenCourseNames] = useState([]);
   const [courseActionsOpen, setCourseActionsOpen] = useState('');
   const refreshInFlightRef = useRef(false);
+  const initialAutoSyncRef = useRef(false);
   const [accountStatus, setAccountStatus] = useState(() => (
     ACCOUNTS.reduce((acc, account) => {
       acc[account.key] = defaultStatus();
       return acc;
     }, {})
   ));
-
-  useEffect(() => {
-    autoConnectAndSync();
-  }, []);
 
   const visibleCourses = useMemo(
     () => courses.filter((course) => {
@@ -86,7 +83,7 @@ const CanvasSettings = ({
   const primaryStatus = accountStatus[primaryAccount.key];
   const connectedAccounts = ACCOUNTS.filter((account) => accountStatus[account.key]?.auth === 'success');
   const connectedCount = connectedAccounts.length;
-  const updateAccountStatus = (accountKey, patch) => {
+  const updateAccountStatus = useCallback((accountKey, patch) => {
     setAccountStatus((prev) => ({
       ...prev,
       [accountKey]: {
@@ -94,18 +91,18 @@ const CanvasSettings = ({
         ...patch
       }
     }));
-  };
+  }, []);
 
-  const resetAccountStates = () => {
+  const resetAccountStates = useCallback(() => {
     setAccountStatus(
       ACCOUNTS.reduce((acc, account) => {
         acc[account.key] = defaultStatus();
         return acc;
       }, {})
     );
-  };
+  }, []);
 
-  const requestJson = async (url, options = {}, fallbackMessage = 'Request failed') => {
+  const requestJson = useCallback(async (url, options = {}, fallbackMessage = 'Request failed') => {
     const response = await fetch(url, options);
     const text = await response.text();
 
@@ -121,36 +118,9 @@ const CanvasSettings = ({
     }
 
     return data;
-  };
+  }, []);
 
-  const autoConnectAndSync = useCallback(async () => {
-    if (refreshInFlightRef.current) {
-      return;
-    }
-
-    refreshInFlightRef.current = true;
-    setLoading(true);
-    try {
-      resetAccountStates();
-      const connected = await connectAccounts();
-      if (connected.length === 0) {
-        setCourses([]);
-        return;
-      }
-
-      const loadedCourses = await loadCourses(connected);
-      if (loadedCourses.length > 0) {
-        onCoursesLoaded?.(loadedCourses);
-      }
-
-      await syncAssignments(connected);
-    } finally {
-      refreshInFlightRef.current = false;
-      setLoading(false);
-    }
-  }, [onCoursesLoaded, onSyncAssignments]);
-
-  const connectAccounts = async () => {
+  const connectAccounts = useCallback(async () => {
     const connected = [];
 
     for (const account of ACCOUNTS) {
@@ -186,9 +156,9 @@ const CanvasSettings = ({
     }
 
     return connected;
-  };
+  }, [requestJson, updateAccountStatus]);
 
-  const loadCourses = async (accounts) => {
+  const loadCourses = useCallback(async (accounts) => {
     const allCourses = [];
 
     for (const account of accounts) {
@@ -225,9 +195,9 @@ const CanvasSettings = ({
 
     setCourses(allCourses);
     return allCourses;
-  };
+  }, [requestJson, updateAccountStatus]);
 
-  const syncAssignments = async (accounts = connectedAccounts) => {
+  const syncAssignments = useCallback(async (accounts = connectedAccounts) => {
     const allEvents = [];
 
     for (const account of accounts) {
@@ -263,7 +233,42 @@ const CanvasSettings = ({
 
     onSyncAssignments?.(allEvents);
     setLastSync(new Date());
-  };
+  }, [connectedAccounts, onSyncAssignments, requestJson, updateAccountStatus]);
+
+  const autoConnectAndSync = useCallback(async () => {
+    if (refreshInFlightRef.current) {
+      return;
+    }
+
+    refreshInFlightRef.current = true;
+    setLoading(true);
+    try {
+      resetAccountStates();
+      const connected = await connectAccounts();
+      if (connected.length === 0) {
+        setCourses([]);
+        return;
+      }
+
+      const loadedCourses = await loadCourses(connected);
+      if (loadedCourses.length > 0) {
+        onCoursesLoaded?.(loadedCourses);
+      }
+
+      await syncAssignments(connected);
+    } finally {
+      refreshInFlightRef.current = false;
+      setLoading(false);
+    }
+  }, [connectAccounts, loadCourses, onCoursesLoaded, resetAccountStates, syncAssignments]);
+
+  useEffect(() => {
+    if (initialAutoSyncRef.current) {
+      return;
+    }
+    initialAutoSyncRef.current = true;
+    autoConnectAndSync();
+  }, [autoConnectAndSync]);
 
   const handleSync = async () => {
     await autoConnectAndSync();
