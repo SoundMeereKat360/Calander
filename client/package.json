@@ -11,6 +11,11 @@
     "react-big-calendar": "^1.8.5",
     "moment": "^2.29.4"
   },
+  "overrides": {
+    "html-webpack-plugin": "5.5.0",
+    "lodash": "4.17.21",
+    "lodash-es": "4.17.21"
+  },
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
