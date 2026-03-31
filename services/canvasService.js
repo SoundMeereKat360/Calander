@@ -84,17 +84,9 @@ class CanvasService {
 
       for (const course of activeCourses) {
         try {
-          const assignments = await this.getCourseAssignments(course.id);
-          const futureAssignments = assignments.filter(assignment => {
-            // Only include assignments that are due in the future or recently past
-            if (!assignment.due_at) return false;
-            const dueDate = new Date(assignment.due_at);
-            const oneWeekAgo = new Date();
-            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-            return dueDate >= oneWeekAgo;
-          });
-          
-          const formattedAssignments = futureAssignments.map(assignment => ({
+          const assignmentsWithDueDates = assignments.filter((assignment) => assignment.due_at);
+
+          const formattedAssignments = assignmentsWithDueDates.map(assignment => ({
             id: `canvas_${assignment.id}`,
             title: assignment.name,
             course: course.name,

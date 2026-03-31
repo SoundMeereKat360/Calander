@@ -8,7 +8,7 @@
     "dev": "nodemon server.js",
     "client": "cd client && npm start",
     "build": "cd client && npm run build",
-    "build:azure": "npm install --prefix client --package-lock=false && npm run build --prefix client",
+    "build:azure": "npm run build --prefix client",
     "install-all": "npm install && cd client && npm install"
   },
   "dependencies": {
