@@ -10,7 +10,7 @@ class CanvasService {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json'
       },
-      timeout: 10000
+      timeout: 30000
     });
   }
 
@@ -59,9 +59,7 @@ class CanvasService {
   async getAllAssignments() {
     try {
       const courses = await this.getCourses();
-      const currentDate = new Date();
-      const currentYear = currentDate.getFullYear();
-      const currentMonth = currentDate.getMonth();
+      const currentYear = new Date().getFullYear();
       
       // Filter to current and future semesters only
       const activeCourses = courses.filter(course => {
@@ -81,9 +79,11 @@ class CanvasService {
       });
       
       const allAssignments = [];
+      const courseErrors = [];
 
       for (const course of activeCourses) {
         try {
+          const assignments = await this.getCourseAssignments(course.id);
           const assignmentsWithDueDates = assignments.filter((assignment) => assignment.due_at);
 
           const formattedAssignments = assignmentsWithDueDates.map(assignment => ({
@@ -98,8 +98,13 @@ class CanvasService {
           }));
           allAssignments.push(...formattedAssignments);
         } catch (err) {
+          courseErrors.push(`${course.name}: ${err.message}`);
           console.error(`Error fetching assignments for course ${course.id}:`, err.message);
         }
+      }
+
+      if (activeCourses.length > 0 && allAssignments.length === 0 && courseErrors.length === activeCourses.length) {
+        throw new Error(`All course assignment requests failed. ${courseErrors[0]}`);
       }
 
       return allAssignments;
