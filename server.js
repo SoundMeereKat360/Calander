@@ -336,6 +336,30 @@ app.post('/api/calendar/refresh', async (req, res) => {
   }
 });
 
+app.post('/api/calendar/resync-hidden', (req, res) => {
+  try {
+    const hiddenCourses = Array.isArray(req.body?.hiddenCourses) ? req.body.hiddenCourses : [];
+    const hiddenSet = new Set(hiddenCourses);
+
+    Object.keys(syncedCanvasEvents).forEach((userId) => {
+      const events = Array.isArray(syncedCanvasEvents[userId]) ? syncedCanvasEvents[userId] : [];
+      syncedCanvasEvents[userId] = events.filter((event) => !hiddenSet.has(event.course));
+    });
+
+    saveCanvasEvents();
+
+    const events = getConnectedCanvasEvents();
+    res.json({
+      success: true,
+      hiddenCourses,
+      syncedEvents: events.length,
+      events
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/calendar/feed/:token', async (req, res) => {
   try {
     if (req.params.token !== FEED_TOKEN) {

@@ -36,7 +36,9 @@ const CanvasSettings = ({
   onCoursesLoaded,
   courseColors,
   onCourseColorChange,
-  onPrimaryUserChange
+  onPrimaryUserChange,
+  onHiddenCoursesChange,
+  onResyncHiddenCourses
 }) => {
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -287,8 +289,31 @@ const CanvasSettings = ({
     }
   }, [hiddenCourseNames]);
 
+  useEffect(() => {
+    onHiddenCoursesChange?.(hiddenCourseNames);
+  }, [hiddenCourseNames, onHiddenCoursesChange]);
+
   const handleSync = async () => {
     await autoConnectAndSync();
+  };
+
+  const handleResyncHidden = async () => {
+    if (hiddenCourseNames.length === 0) {
+      alert('Hide at least one class first.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await onResyncHiddenCourses?.(hiddenCourseNames);
+      const hiddenCount = hiddenCourseNames.length;
+      alert(`Resynced calendar with ${hiddenCount} hidden ${hiddenCount === 1 ? 'class' : 'classes'} removed.`);
+      return result;
+    } catch (error) {
+      alert(error.message || 'Failed to resync hidden classes.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const scanSyllabusInternal = async (courseId, courseName, username) => {
@@ -527,6 +552,13 @@ const CanvasSettings = ({
             className="scan-all-btn"
           >
             {scanning ? 'Scanning all...' : 'Scan Visible Syllabi'}
+          </button>
+          <button
+            onClick={handleResyncHidden}
+            disabled={loading || hiddenCourseNames.length === 0}
+            className="resync-hidden-btn"
+          >
+            {loading ? 'Resyncing...' : 'Resync Hidden Classes'}
           </button>
         </div>
       </div>

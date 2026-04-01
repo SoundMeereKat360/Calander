@@ -35,6 +35,7 @@ function App() {
   const [subscriptionUrl, setSubscriptionUrl] = useState('');
   const [subscriptionRefreshTime, setSubscriptionRefreshTime] = useState('');
   const [refreshingSubscription, setRefreshingSubscription] = useState(false);
+  const [hiddenCourseNames, setHiddenCourseNames] = useState([]);
 
   useEffect(() => {
     fetchEvents();
@@ -121,6 +122,11 @@ function App() {
   const handleCourseColorChange = (courseName, color) => {
     setCourseColors((prev) => ({ ...prev, [courseName]: color }));
   };
+
+  const filteredEvents = useMemo(
+    () => events.filter((event) => !event.course || !hiddenCourseNames.includes(event.course)),
+    [events, hiddenCourseNames]
+  );
 
   const handleSyncAssignments = (canvasEvents) => {
     setEvents((prev) => {
@@ -214,6 +220,28 @@ function App() {
     }
   };
 
+  const handleHiddenCoursesChange = (courseNames) => {
+    setHiddenCourseNames(courseNames);
+  };
+
+  const handleResyncHiddenCourses = async (courseNames) => {
+    const response = await fetch('/api/calendar/resync-hidden', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hiddenCourses: courseNames })
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to resync hidden courses');
+    }
+
+    const visibleEvents = (data.events || []).filter((event) => !courseNames.includes(event.course));
+    handleSyncAssignments(visibleEvents);
+    await fetchSubscriptionUrl();
+    return data;
+  };
+
   return (
     <div className="App">
       <header className="App-header">
@@ -272,7 +300,7 @@ function App() {
 
         <div className="right-panel">
           <Calendar
-            events={events}
+            events={filteredEvents}
             onDeleteEvent={handleDeleteEvent}
             onToggleComplete={handleToggleComplete}
             sortMode={sortMode}
@@ -287,6 +315,8 @@ function App() {
             courseColors={courseColors}
             onCourseColorChange={handleCourseColorChange}
             onPrimaryUserChange={setPrimaryUserName}
+            onHiddenCoursesChange={handleHiddenCoursesChange}
+            onResyncHiddenCourses={handleResyncHiddenCourses}
           />
         </div>
       </div>
