@@ -59,23 +59,62 @@ class CanvasService {
   async getAllAssignments() {
     try {
       const courses = await this.getCourses();
-      const currentYear = new Date().getFullYear();
-      
-      // Filter to current and future semesters only
+      const now = new Date();
+      const ninetyDaysAgo = new Date(now);
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      const currentYear = now.getFullYear();
+      const currentShortYear = currentYear % 100;
+
+      const parseCourseTermCode = (courseName = '') => {
+        const match = courseName.match(/\b(Fa|Sp|Su|Sm|Wi)(\d{2})/i);
+        if (!match) {
+          return null;
+        }
+
+        const season = match[1].toLowerCase();
+        const year = 2000 + parseInt(match[2], 10);
+        const monthBySeason = {
+          wi: 1,
+          sp: 2,
+          su: 6,
+          sm: 6,
+          fa: 8
+        };
+
+        return new Date(year, monthBySeason[season] ?? 0, 1);
+      };
+
+      // Filter to current and recently active semesters only.
       const activeCourses = courses.filter(course => {
         if (!course.enrollment_term_id) return false;
-        
-        // For now, include courses from current year and recent past
-        // In a real implementation, you'd check the term dates
-        const courseYear = course.name.match(/\b(20\d{2})\b/)?.[1];
-        if (courseYear) {
-          const year = parseInt(courseYear);
-          // Include current year and one year back
-          return year >= currentYear - 1;
+
+        const termStart = course.term?.start_at ? new Date(course.term.start_at) : null;
+        const termEnd = course.term?.end_at ? new Date(course.term.end_at) : null;
+
+        if (termEnd && !Number.isNaN(termEnd.getTime())) {
+          return termEnd >= ninetyDaysAgo;
         }
-        
-        // If no year found in course name, include it
-        return true;
+
+        if (termStart && !Number.isNaN(termStart.getTime())) {
+          return termStart.getFullYear() >= currentYear - 1;
+        }
+
+        const parsedTermDate = parseCourseTermCode(course.name);
+        if (parsedTermDate) {
+          return parsedTermDate >= new Date(currentYear - 1, 0, 1);
+        }
+
+        const explicitYear = course.name.match(/\b(20\d{2})\b/)?.[1];
+        if (explicitYear) {
+          return parseInt(explicitYear, 10) >= currentYear - 1;
+        }
+
+        const shortYearCode = course.name.match(/\b(?:Fa|Sp|Su|Sm|Wi)(\d{2})/i)?.[1];
+        if (shortYearCode) {
+          return parseInt(shortYearCode, 10) >= currentShortYear - 1;
+        }
+
+        return false;
       });
       
       const allAssignments = [];
