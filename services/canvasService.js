@@ -62,6 +62,10 @@ class CanvasService {
       const now = new Date();
       const ninetyDaysAgo = new Date(now);
       ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      const oneHundredEightyDaysAgo = new Date(now);
+      oneHundredEightyDaysAgo.setDate(oneHundredEightyDaysAgo.getDate() - 180);
+      const oneYearAhead = new Date(now);
+      oneYearAhead.setFullYear(oneYearAhead.getFullYear() + 1);
       const currentYear = now.getFullYear();
       const currentShortYear = currentYear % 100;
 
@@ -84,46 +88,37 @@ class CanvasService {
         return new Date(year, monthBySeason[season] ?? 0, 1);
       };
 
-      // Filter to current and recently active semesters only.
-      const activeCourses = courses.filter(course => {
-        if (!course.enrollment_term_id) return false;
-
-        const termStart = course.term?.start_at ? new Date(course.term.start_at) : null;
-        const termEnd = course.term?.end_at ? new Date(course.term.end_at) : null;
-
-        if (termEnd && !Number.isNaN(termEnd.getTime())) {
-          return termEnd >= ninetyDaysAgo;
-        }
-
-        if (termStart && !Number.isNaN(termStart.getTime())) {
-          return termStart.getFullYear() >= currentYear - 1;
-        }
-
-        const parsedTermDate = parseCourseTermCode(course.name);
-        if (parsedTermDate) {
-          return parsedTermDate >= new Date(currentYear - 1, 0, 1);
-        }
-
-        const explicitYear = course.name.match(/\b(20\d{2})\b/)?.[1];
-        if (explicitYear) {
-          return parseInt(explicitYear, 10) >= currentYear - 1;
-        }
-
-        const shortYearCode = course.name.match(/\b(?:Fa|Sp|Su|Sm|Wi)(\d{2})/i)?.[1];
-        if (shortYearCode) {
-          return parseInt(shortYearCode, 10) >= currentShortYear - 1;
-        }
-
-        return false;
-      });
-      
       const allAssignments = [];
       const courseErrors = [];
 
-      for (const course of activeCourses) {
+      for (const course of courses) {
         try {
           const assignments = await this.getCourseAssignments(course.id);
           const assignmentsWithDueDates = assignments.filter((assignment) => assignment.due_at);
+          const assignmentDates = assignmentsWithDueDates
+            .map((assignment) => new Date(assignment.due_at))
+            .filter((date) => !Number.isNaN(date.getTime()));
+
+          const termStart = course.term?.start_at ? new Date(course.term.start_at) : null;
+          const termEnd = course.term?.end_at ? new Date(course.term.end_at) : null;
+          const parsedTermDate = parseCourseTermCode(course.name);
+          const explicitYear = course.name.match(/\b(20\d{2})\b/)?.[1];
+          const shortYearCode = course.name.match(/\b(?:Fa|Sp|Su|Sm|Wi)(\d{2})/i)?.[1];
+
+          const isCurrentByTerm =
+            (termEnd && !Number.isNaN(termEnd.getTime()) && termEnd >= ninetyDaysAgo) ||
+            (termStart && !Number.isNaN(termStart.getTime()) && termStart.getFullYear() >= currentYear - 1) ||
+            (parsedTermDate && parsedTermDate >= new Date(currentYear - 1, 0, 1)) ||
+            (explicitYear && parseInt(explicitYear, 10) >= currentYear - 1) ||
+            (shortYearCode && parseInt(shortYearCode, 10) >= currentShortYear - 1);
+
+          const isCurrentByAssignments = assignmentDates.some((date) => (
+            date >= oneHundredEightyDaysAgo && date <= oneYearAhead
+          ));
+
+          if (!isCurrentByTerm && !isCurrentByAssignments) {
+            continue;
+          }
 
           const formattedAssignments = assignmentsWithDueDates.map(assignment => ({
             id: `canvas_${assignment.id}`,
@@ -142,7 +137,7 @@ class CanvasService {
         }
       }
 
-      if (activeCourses.length > 0 && allAssignments.length === 0 && courseErrors.length === activeCourses.length) {
+      if (courses.length > 0 && allAssignments.length === 0 && courseErrors.length === courses.length) {
         throw new Error(`All course assignment requests failed. ${courseErrors[0]}`);
       }
 
