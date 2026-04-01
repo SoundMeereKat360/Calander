@@ -21,17 +21,6 @@ const DAILY_QUOTES = [
   'Make today easier for future you, one task at a time.'
 ];
 
-const escapeIcsText = (value = '') => value
-  .replace(/\\/g, '\\\\')
-  .replace(/\n/g, '\\n')
-  .replace(/,/g, '\\,')
-  .replace(/;/g, '\\;');
-
-const formatIcsDate = (dateString) => {
-  const date = new Date(dateString);
-  return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
-};
-
 function App() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -147,7 +136,17 @@ function App() {
       });
       return next;
     });
+    setAvailableCourses((prev) => {
+      const merged = new Set(prev);
+      canvasEvents.forEach((event) => {
+        if (event.course) {
+          merged.add(event.course);
+        }
+      });
+      return Array.from(merged).sort((a, b) => a.localeCompare(b));
+    });
     setLastSync(new Date());
+    fetchEvents();
   };
 
   const handleDeleteEvent = (eventId) => {
@@ -215,52 +214,6 @@ function App() {
     }
   };
 
-  const handleExportCalendar = () => {
-    const nowStamp = formatIcsDate(new Date().toISOString());
-    const calendarEvents = events.map((event) => {
-      const descriptionParts = [];
-      if (event.description) {
-        descriptionParts.push(event.description.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
-      }
-      if (event.url) {
-        descriptionParts.push(`Canvas link: ${event.url}`);
-      }
-
-      return [
-        'BEGIN:VEVENT',
-        `UID:${escapeIcsText(event.id)}@ai-calendar-agent`,
-        `DTSTAMP:${nowStamp}`,
-        `DTSTART:${formatIcsDate(event.start)}`,
-        `DTEND:${formatIcsDate(event.end || event.start)}`,
-        `SUMMARY:${escapeIcsText(event.title)}`,
-        `DESCRIPTION:${escapeIcsText(descriptionParts.join('\n\n'))}`,
-        event.course ? `CATEGORIES:${escapeIcsText(event.course)}` : '',
-        event.url ? `URL:${escapeIcsText(event.url)}` : '',
-        'END:VEVENT'
-      ].filter(Boolean).join('\r\n');
-    }).join('\r\n');
-
-    const icsContent = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//AI Calendar Agent//EN',
-      'CALSCALE:GREGORIAN',
-      'METHOD:PUBLISH',
-      calendarEvents,
-      'END:VCALENDAR'
-    ].join('\r\n');
-
-    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'ai-calendar-agent.ics';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <div className="App">
       <header className="App-header">
@@ -295,10 +248,6 @@ function App() {
               <option value="class">Class</option>
             </select>
           </div>
-
-          <button onClick={handleExportCalendar} className="export-btn">
-            Export for iPhone Calendar
-          </button>
 
           <button onClick={handleCopySubscriptionUrl} className="subscription-btn" disabled={!subscriptionUrl}>
             Copy Subscription URL
