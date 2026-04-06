@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import './App.css';
 import Calendar from './components/Calendar';
 import EventForm from './components/EventForm';
@@ -21,6 +21,17 @@ const DAILY_QUOTES = [
   'Make today easier for future you, one task at a time.'
 ];
 
+const escapeIcsText = (value = '') => value
+  .replace(/\\/g, '\\\\')
+  .replace(/\n/g, '\\n')
+  .replace(/,/g, '\\,')
+  .replace(/;/g, '\\;');
+
+const formatIcsDate = (dateString) => {
+  const date = new Date(dateString);
+  return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+};
+
 function App() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -33,9 +44,6 @@ function App() {
   const [headerTime, setHeaderTime] = useState(new Date());
   const [primaryUserName, setPrimaryUserName] = useState('');
   const [subscriptionUrl, setSubscriptionUrl] = useState('');
-  const [subscriptionRefreshTime, setSubscriptionRefreshTime] = useState('');
-  const [refreshingSubscription, setRefreshingSubscription] = useState(false);
-  const [hiddenCourseNames, setHiddenCourseNames] = useState([]);
 
   useEffect(() => {
     fetchEvents();
@@ -69,10 +77,9 @@ function App() {
 
   const fetchSubscriptionUrl = async () => {
     try {
-      const response = await fetch('/api/calendar/subscription');
+      const response = await fetch('http://localhost:5000/api/calendar/subscription');
       const data = await response.json();
       setSubscriptionUrl(data.feedUrl || '');
-      setSubscriptionRefreshTime(data.lastRefreshedAt || '');
     } catch (error) {
       console.error('Error fetching subscription URL:', error);
     }
@@ -123,11 +130,6 @@ function App() {
     setCourseColors((prev) => ({ ...prev, [courseName]: color }));
   };
 
-  const filteredEvents = useMemo(
-    () => events.filter((event) => !event.course || !hiddenCourseNames.includes(event.course)),
-    [events, hiddenCourseNames]
-  );
-
   const handleSyncAssignments = (canvasEvents) => {
     setEvents((prev) => {
       const nonCanvasEvents = prev.filter((event) => !String(event.id || '').startsWith('canvas_'));
@@ -142,17 +144,7 @@ function App() {
       });
       return next;
     });
-    setAvailableCourses((prev) => {
-      const merged = new Set(prev);
-      canvasEvents.forEach((event) => {
-        if (event.course) {
-          merged.add(event.course);
-        }
-      });
-      return Array.from(merged).sort((a, b) => a.localeCompare(b));
-    });
     setLastSync(new Date());
-    fetchEvents();
   };
 
   const handleDeleteEvent = (eventId) => {
@@ -174,12 +166,37 @@ function App() {
     }
   };
 
-  const handleToggleComplete = (eventId) => {
+  const handleToggleComplete = async (eventId) => {
+    const current = events.find((event) => event.id === eventId);
+    if (!current) {
+      return;
+    }
+
+    const nextCompleted = !current.completed;
     setEvents((prev) => prev.map((event) => (
       event.id === eventId
-        ? { ...event, completed: !event.completed }
+        ? { ...event, completed: nextCompleted }
         : event
     )));
+
+    try {
+      const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/state`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completed: nextCompleted })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save completion state');
+      }
+    } catch (error) {
+      console.error('Error updating completion state:', error);
+      setEvents((prev) => prev.map((event) => (
+        event.id === eventId
+          ? { ...event, completed: !nextCompleted }
+          : event
+      )));
+    }
   };
 
   const handleCopySubscriptionUrl = async () => {
@@ -196,57 +213,57 @@ function App() {
     }
   };
 
-  const handleRefreshSubscription = async () => {
-    try {
-      setRefreshingSubscription(true);
-      const response = await fetch('/api/calendar/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to refresh subscription feed');
+  const handleExportCalendar = () => {
+    const nowStamp = formatIcsDate(new Date().toISOString());
+    const calendarEvents = events.map((event) => {
+      const descriptionParts = [];
+      if (event.description) {
+        descriptionParts.push(event.description.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
+      }
+      if (event.url) {
+        descriptionParts.push(`Canvas link: ${event.url}`);
       }
 
-      setSubscriptionRefreshTime(data.refreshedAt || new Date().toISOString());
-      await fetchEvents();
-      alert(`Subscription feed updated with ${data.syncedEvents || 0} synced events.`);
-    } catch (error) {
-      console.error('Error refreshing subscription feed:', error);
-      alert(error.message || 'Failed to refresh subscription feed');
-    } finally {
-      setRefreshingSubscription(false);
-    }
-  };
+      return [
+        'BEGIN:VEVENT',
+        `UID:${escapeIcsText(event.id)}@ai-calendar-agent`,
+        `DTSTAMP:${nowStamp}`,
+        `DTSTART:${formatIcsDate(event.start)}`,
+        `DTEND:${formatIcsDate(event.end || event.start)}`,
+        `SUMMARY:${escapeIcsText(event.title)}`,
+        `DESCRIPTION:${escapeIcsText(descriptionParts.join('\n\n'))}`,
+        event.course ? `CATEGORIES:${escapeIcsText(event.course)}` : '',
+        event.url ? `URL:${escapeIcsText(event.url)}` : '',
+        'END:VEVENT'
+      ].filter(Boolean).join('\r\n');
+    }).join('\r\n');
 
-  const handleHiddenCoursesChange = (courseNames) => {
-    setHiddenCourseNames(courseNames);
-  };
+    const icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Jarvis Calendar//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      calendarEvents,
+      'END:VCALENDAR'
+    ].join('\r\n');
 
-  const handleResyncHiddenCourses = async (courseNames) => {
-    const response = await fetch('/api/calendar/resync-hidden', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hiddenCourses: courseNames })
-    });
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to resync hidden courses');
-    }
-
-    const visibleEvents = (data.events || []).filter((event) => !courseNames.includes(event.course));
-    handleSyncAssignments(visibleEvents);
-    await fetchSubscriptionUrl();
-    return data;
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'jarvis-calendar.ics';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
     <div className="App">
       <header className="App-header">
         <div className="header-left">
-          <h1>AI Calendar Agent</h1>
+          <h1>Jarvis Calendar</h1>
           <p>{primaryUserName ? `Welcome, ${primaryUserName}` : 'Welcome back'}</p>
           <div className="header-quote">{headerQuote}</div>
           <div className="header-actions">
@@ -277,30 +294,20 @@ function App() {
             </select>
           </div>
 
+          <button onClick={handleExportCalendar} className="export-btn">
+            Export for iPhone Calendar
+          </button>
+
           <button onClick={handleCopySubscriptionUrl} className="subscription-btn" disabled={!subscriptionUrl}>
             Copy Subscription URL
           </button>
-
-          <button
-            onClick={handleRefreshSubscription}
-            className="subscription-refresh-btn"
-            disabled={refreshingSubscription}
-          >
-            {refreshingSubscription ? 'Updating Subscription...' : 'Update Subscription Feed'}
-          </button>
-
-          {subscriptionRefreshTime && (
-            <div className="subscription-refresh-time">
-              Feed updated: {new Date(subscriptionRefreshTime).toLocaleString()}
-            </div>
-          )}
 
           <AIScheduler />
         </div>
 
         <div className="right-panel">
           <Calendar
-            events={filteredEvents}
+            events={events}
             onDeleteEvent={handleDeleteEvent}
             onToggleComplete={handleToggleComplete}
             sortMode={sortMode}
@@ -315,8 +322,7 @@ function App() {
             courseColors={courseColors}
             onCourseColorChange={handleCourseColorChange}
             onPrimaryUserChange={setPrimaryUserName}
-            onHiddenCoursesChange={handleHiddenCoursesChange}
-            onResyncHiddenCourses={handleResyncHiddenCourses}
+            onPreferencesChanged={fetchEvents}
           />
         </div>
       </div>

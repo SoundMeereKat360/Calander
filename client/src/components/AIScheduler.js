@@ -28,14 +28,14 @@ const AIScheduler = () => {
 
   return (
     <div className="ai-scheduler-container">
-      <h2>🤖 AI Scheduler</h2>
+      <h2>🤖 Jarvis Scheduler</h2>
       <button onClick={handleAISchedule} disabled={loading} className="ai-btn">
-        {loading ? 'Analyzing...' : 'Get Smart Schedule'}
+        {loading ? 'Analyzing...' : 'Ask Jarvis for a Schedule'}
       </button>
       
       {suggestions.length > 0 && (
         <div className="suggestions">
-          <h3>📋 AI Recommendations:</h3>
+          <h3>📋 Jarvis Recommendations:</h3>
           <ul>
             {suggestions.map((suggestion, idx) => (
               <li key={idx}>{suggestion}</li>

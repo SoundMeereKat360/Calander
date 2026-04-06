@@ -10,7 +10,7 @@ class CanvasService {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json'
       },
-      timeout: 30000
+      timeout: 10000
     });
   }
 
@@ -59,68 +59,42 @@ class CanvasService {
   async getAllAssignments() {
     try {
       const courses = await this.getCourses();
-      const now = new Date();
-      const ninetyDaysAgo = new Date(now);
-      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-      const oneHundredEightyDaysAgo = new Date(now);
-      oneHundredEightyDaysAgo.setDate(oneHundredEightyDaysAgo.getDate() - 180);
-      const oneYearAhead = new Date(now);
-      oneYearAhead.setFullYear(oneYearAhead.getFullYear() + 1);
-      const currentYear = now.getFullYear();
-      const currentShortYear = currentYear % 100;
-
-      const parseCourseTermCode = (courseName = '') => {
-        const match = courseName.match(/\b(Fa|Sp|Su|Sm|Wi)(\d{2})/i);
-        if (!match) {
-          return null;
+      const currentDate = new Date();
+      const currentYear = currentDate.getFullYear();
+      const currentMonth = currentDate.getMonth();
+      
+      // Filter to current and future semesters only
+      const activeCourses = courses.filter(course => {
+        if (!course.enrollment_term_id) return false;
+        
+        // For now, include courses from current year and recent past
+        // In a real implementation, you'd check the term dates
+        const courseYear = course.name.match(/\b(20\d{2})\b/)?.[1];
+        if (courseYear) {
+          const year = parseInt(courseYear);
+          // Include current year and one year back
+          return year >= currentYear - 1;
         }
-
-        const season = match[1].toLowerCase();
-        const year = 2000 + parseInt(match[2], 10);
-        const monthBySeason = {
-          wi: 1,
-          sp: 2,
-          su: 6,
-          sm: 6,
-          fa: 8
-        };
-
-        return new Date(year, monthBySeason[season] ?? 0, 1);
-      };
-
+        
+        // If no year found in course name, include it
+        return true;
+      });
+      
       const allAssignments = [];
-      const courseErrors = [];
 
-      for (const course of courses) {
+      for (const course of activeCourses) {
         try {
           const assignments = await this.getCourseAssignments(course.id);
-          const assignmentsWithDueDates = assignments.filter((assignment) => assignment.due_at);
-          const assignmentDates = assignmentsWithDueDates
-            .map((assignment) => new Date(assignment.due_at))
-            .filter((date) => !Number.isNaN(date.getTime()));
-
-          const termStart = course.term?.start_at ? new Date(course.term.start_at) : null;
-          const termEnd = course.term?.end_at ? new Date(course.term.end_at) : null;
-          const parsedTermDate = parseCourseTermCode(course.name);
-          const explicitYear = course.name.match(/\b(20\d{2})\b/)?.[1];
-          const shortYearCode = course.name.match(/\b(?:Fa|Sp|Su|Sm|Wi)(\d{2})/i)?.[1];
-
-          const isCurrentByTerm =
-            (termEnd && !Number.isNaN(termEnd.getTime()) && termEnd >= ninetyDaysAgo) ||
-            (termStart && !Number.isNaN(termStart.getTime()) && termStart.getFullYear() >= currentYear - 1) ||
-            (parsedTermDate && parsedTermDate >= new Date(currentYear - 1, 0, 1)) ||
-            (explicitYear && parseInt(explicitYear, 10) >= currentYear - 1) ||
-            (shortYearCode && parseInt(shortYearCode, 10) >= currentShortYear - 1);
-
-          const isCurrentByAssignments = assignmentDates.some((date) => (
-            date >= oneHundredEightyDaysAgo && date <= oneYearAhead
-          ));
-
-          if (!isCurrentByTerm && !isCurrentByAssignments) {
-            continue;
-          }
-
-          const formattedAssignments = assignmentsWithDueDates.map(assignment => ({
+          const futureAssignments = assignments.filter(assignment => {
+            // Only include assignments that are due in the future or recently past
+            if (!assignment.due_at) return false;
+            const dueDate = new Date(assignment.due_at);
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+            return dueDate >= oneWeekAgo;
+          });
+          
+          const formattedAssignments = futureAssignments.map(assignment => ({
             id: `canvas_${assignment.id}`,
             title: assignment.name,
             course: course.name,
@@ -132,13 +106,8 @@ class CanvasService {
           }));
           allAssignments.push(...formattedAssignments);
         } catch (err) {
-          courseErrors.push(`${course.name}: ${err.message}`);
           console.error(`Error fetching assignments for course ${course.id}:`, err.message);
         }
-      }
-
-      if (courses.length > 0 && allAssignments.length === 0 && courseErrors.length === courses.length) {
-        throw new Error(`All course assignment requests failed. ${courseErrors[0]}`);
       }
 
       return allAssignments;

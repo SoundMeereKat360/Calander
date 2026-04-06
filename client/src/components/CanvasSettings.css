@@ -218,7 +218,6 @@
 
 .sync-btn,
 .scan-all-btn,
-.resync-hidden-btn,
 .show-more-courses-btn,
 .hidden-course-chip,
 .hidden-courses-toggle,
@@ -331,17 +330,8 @@
   flex: 1;
 }
 
-.resync-hidden-btn {
-  background: #fff7ed;
-  color: #c2410c;
-  border: 1px solid #fdba74;
-  padding: 9px 12px;
-  flex: 1;
-}
-
 .sync-btn:hover:not(:disabled),
 .scan-all-btn:hover:not(:disabled),
-.resync-hidden-btn:hover:not(:disabled),
 .show-more-courses-btn:hover:not(:disabled),
 .hidden-courses-toggle:hover:not(:disabled),
 .course-menu-btn:hover:not(:disabled),
@@ -352,7 +342,6 @@
 
 .sync-btn:disabled,
 .scan-all-btn:disabled,
-.resync-hidden-btn:disabled,
 .show-more-courses-btn:disabled,
 .hidden-courses-toggle:disabled,
 .course-menu-btn:disabled,

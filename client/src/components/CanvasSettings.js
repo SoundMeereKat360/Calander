@@ -1,6 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './CanvasSettings.css';
 
+const HIDDEN_COURSES_STORAGE_KEY = 'jarvis-calendar.hidden-courses';
+
+const loadHiddenCourseNames = () => {
+  try {
+    const stored = window.localStorage.getItem(HIDDEN_COURSES_STORAGE_KEY);
+    if (!stored) {
+      return [];
+    }
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string' && item.trim()) : [];
+  } catch (error) {
+    console.error('Error loading hidden courses from storage:', error);
+    return [];
+  }
+};
+
 const ACCOUNTS = [
   {
     key: 'tmcc',
@@ -28,8 +44,7 @@ const defaultStatus = () => ({
   user: null
 });
 
-const API_BASE = '';
-const HIDDEN_COURSES_STORAGE_KEY = 'ai-calendar-hidden-courses';
+const API_BASE = `${window.location.protocol}//${window.location.hostname}:5000`;
 
 const CanvasSettings = ({
   onSyncAssignments,
@@ -37,8 +52,7 @@ const CanvasSettings = ({
   courseColors,
   onCourseColorChange,
   onPrimaryUserChange,
-  onHiddenCoursesChange,
-  onResyncHiddenCourses
+  onPreferencesChanged
 }) => {
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -47,24 +61,63 @@ const CanvasSettings = ({
   const [showTmccCourses, setShowTmccCourses] = useState(true);
   const [showHiddenCourses, setShowHiddenCourses] = useState(false);
   const [courses, setCourses] = useState([]);
-  const [hiddenCourseNames, setHiddenCourseNames] = useState(() => {
-    try {
-      const stored = window.localStorage.getItem(HIDDEN_COURSES_STORAGE_KEY);
-      const parsed = stored ? JSON.parse(stored) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      return [];
-    }
-  });
+  const [hiddenCourseNames, setHiddenCourseNames] = useState(() => loadHiddenCourseNames());
   const [courseActionsOpen, setCourseActionsOpen] = useState('');
   const refreshInFlightRef = useRef(false);
-  const initialAutoSyncRef = useRef(false);
   const [accountStatus, setAccountStatus] = useState(() => (
     ACCOUNTS.reduce((acc, account) => {
       acc[account.key] = defaultStatus();
       return acc;
     }, {})
   ));
+
+  useEffect(() => {
+    autoConnectAndSync();
+  }, []);
+
+  useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/preferences`);
+        if (!response.ok) {
+          return;
+        }
+        const data = await response.json();
+        if (Array.isArray(data.hiddenCourseNames)) {
+          setHiddenCourseNames(data.hiddenCourseNames);
+        }
+      } catch (error) {
+        console.error('Error loading calendar preferences:', error);
+      }
+    };
+
+    loadPreferences();
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(HIDDEN_COURSES_STORAGE_KEY, JSON.stringify(hiddenCourseNames));
+    } catch (error) {
+      console.error('Error saving hidden courses to storage:', error);
+    }
+
+    const syncPreferences = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/preferences`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hiddenCourseNames })
+        });
+        if (response.ok) {
+          onPreferencesChanged?.();
+        }
+      } catch (syncError) {
+        console.error('Error syncing hidden courses to server:', syncError);
+      }
+    };
+
+    syncPreferences();
+  }, [hiddenCourseNames]);
 
   const visibleCourses = useMemo(
     () => courses.filter((course) => {
@@ -94,7 +147,7 @@ const CanvasSettings = ({
   const primaryStatus = accountStatus[primaryAccount.key];
   const connectedAccounts = ACCOUNTS.filter((account) => accountStatus[account.key]?.auth === 'success');
   const connectedCount = connectedAccounts.length;
-  const updateAccountStatus = useCallback((accountKey, patch) => {
+  const updateAccountStatus = (accountKey, patch) => {
     setAccountStatus((prev) => ({
       ...prev,
       [accountKey]: {
@@ -102,18 +155,18 @@ const CanvasSettings = ({
         ...patch
       }
     }));
-  }, []);
+  };
 
-  const resetAccountStates = useCallback(() => {
+  const resetAccountStates = () => {
     setAccountStatus(
       ACCOUNTS.reduce((acc, account) => {
         acc[account.key] = defaultStatus();
         return acc;
       }, {})
     );
-  }, []);
+  };
 
-  const requestJson = useCallback(async (url, options = {}, fallbackMessage = 'Request failed') => {
+  const requestJson = async (url, options = {}, fallbackMessage = 'Request failed') => {
     const response = await fetch(url, options);
     const text = await response.text();
 
@@ -129,9 +182,36 @@ const CanvasSettings = ({
     }
 
     return data;
-  }, []);
+  };
 
-  const connectAccounts = useCallback(async () => {
+  const autoConnectAndSync = useCallback(async () => {
+    if (refreshInFlightRef.current) {
+      return;
+    }
+
+    refreshInFlightRef.current = true;
+    setLoading(true);
+    try {
+      resetAccountStates();
+      const connected = await connectAccounts();
+      if (connected.length === 0) {
+        setCourses([]);
+        return;
+      }
+
+      const loadedCourses = await loadCourses(connected);
+      if (loadedCourses.length > 0) {
+        onCoursesLoaded?.(loadedCourses);
+      }
+
+      await syncAssignments(connected);
+    } finally {
+      refreshInFlightRef.current = false;
+      setLoading(false);
+    }
+  }, [onCoursesLoaded, onSyncAssignments]);
+
+  const connectAccounts = async () => {
     const connected = [];
 
     for (const account of ACCOUNTS) {
@@ -167,9 +247,9 @@ const CanvasSettings = ({
     }
 
     return connected;
-  }, [requestJson, updateAccountStatus]);
+  };
 
-  const loadCourses = useCallback(async (accounts) => {
+  const loadCourses = async (accounts) => {
     const allCourses = [];
 
     for (const account of accounts) {
@@ -206,9 +286,9 @@ const CanvasSettings = ({
 
     setCourses(allCourses);
     return allCourses;
-  }, [requestJson, updateAccountStatus]);
+  };
 
-  const syncAssignments = useCallback(async (accounts = connectedAccounts) => {
+  const syncAssignments = async (accounts = connectedAccounts) => {
     const allEvents = [];
 
     for (const account of accounts) {
@@ -244,76 +324,10 @@ const CanvasSettings = ({
 
     onSyncAssignments?.(allEvents);
     setLastSync(new Date());
-  }, [connectedAccounts, onSyncAssignments, requestJson, updateAccountStatus]);
-
-  const autoConnectAndSync = useCallback(async () => {
-    if (refreshInFlightRef.current) {
-      return;
-    }
-
-    refreshInFlightRef.current = true;
-    setLoading(true);
-    try {
-      resetAccountStates();
-      const connected = await connectAccounts();
-      if (connected.length === 0) {
-        setCourses([]);
-        return;
-      }
-
-      const loadedCourses = await loadCourses(connected);
-      if (loadedCourses.length > 0) {
-        onCoursesLoaded?.(loadedCourses);
-      }
-
-      await syncAssignments(connected);
-    } finally {
-      refreshInFlightRef.current = false;
-      setLoading(false);
-    }
-  }, [connectAccounts, loadCourses, onCoursesLoaded, resetAccountStates, syncAssignments]);
-
-  useEffect(() => {
-    if (initialAutoSyncRef.current) {
-      return;
-    }
-    initialAutoSyncRef.current = true;
-    autoConnectAndSync();
-  }, [autoConnectAndSync]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(HIDDEN_COURSES_STORAGE_KEY, JSON.stringify(hiddenCourseNames));
-    } catch (error) {
-      // Ignore storage failures so Canvas sync still works normally.
-    }
-  }, [hiddenCourseNames]);
-
-  useEffect(() => {
-    onHiddenCoursesChange?.(hiddenCourseNames);
-  }, [hiddenCourseNames, onHiddenCoursesChange]);
+  };
 
   const handleSync = async () => {
     await autoConnectAndSync();
-  };
-
-  const handleResyncHidden = async () => {
-    if (hiddenCourseNames.length === 0) {
-      alert('Hide at least one class first.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const result = await onResyncHiddenCourses?.(hiddenCourseNames);
-      const hiddenCount = hiddenCourseNames.length;
-      alert(`Resynced calendar with ${hiddenCount} hidden ${hiddenCount === 1 ? 'class' : 'classes'} removed.`);
-      return result;
-    } catch (error) {
-      alert(error.message || 'Failed to resync hidden classes.');
-    } finally {
-      setLoading(false);
-    }
   };
 
   const scanSyllabusInternal = async (courseId, courseName, username) => {
@@ -552,13 +566,6 @@ const CanvasSettings = ({
             className="scan-all-btn"
           >
             {scanning ? 'Scanning all...' : 'Scan Visible Syllabi'}
-          </button>
-          <button
-            onClick={handleResyncHidden}
-            disabled={loading || hiddenCourseNames.length === 0}
-            className="resync-hidden-btn"
-          >
-            {loading ? 'Resyncing...' : 'Resync Hidden Classes'}
           </button>
         </div>
       </div>

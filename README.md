@@ -1,43 +1,37 @@
-# AI Calendar Agent 📅
+# Jarvis Calendar
 
-An intelligent calendar application for college students that helps manage classes, assignments, exams, and study schedules with AI-powered recommendations.
+A calendar application that shares the Jarvis identity and can use your local Ollama-backed Jarvis model for chat, alongside events, Canvas sync, and study scheduling.
 
 ## Features
 
-- ✅ **Event Management** - Add classes, assignments, exams, and study sessions
-- 🤖 **AI Scheduler** - Get smart scheduling recommendations based on your workload
-- � **AI Chat Assistant** - Interactive chatbot for calendar help and guidance
-- 🎓 **Canvas Integration** - Sync with TMCC Canvas for automatic assignment import- 💾 **Persistent Connections** - Canvas authentication remembered between sessions- �📱 **Responsive Design** - Works on desktop and mobile devices
-- 💫 **Modern UI** - Beautiful gradient design with smooth animations
-- ⚡ **Real-time Updates** - Instant event creation and calendar refresh
+- Event management for classes, assignments, exams, and study sessions
+- Jarvis Scheduler recommendations based on workload
+- Jarvis chat for calendar help, general questions, and scheduling guidance
+- Canvas integration for automatic assignment import
+- Persistent Canvas connections
+- Responsive browser UI
+- Real-time event updates
+- iPhone subscription calendar feed
 
-## ⚠️ Security Note
+## Security Note
 
-**For Personal Use Only:** This application contains a Canvas API token in the code for convenience. In production applications, API keys should never be stored in code. Use environment variables and proper secret management instead.
+For personal use, keep secrets in `.env` and never commit that file. This repo now includes `.env.example` so the Ollama/Jarvis setup can be committed safely without leaking real keys or tokens.
 
-**Important:** Make sure your `.env` file is in `.gitignore` and never commit API keys to version control.
+## Stack
 
-## Getting Started
-
-**Frontend:**
+Frontend:
 - React 18
-- CSS3 with gradients and animations
-- Axios for API calls
+- Axios
+- react-big-calendar
 
-**Backend:**
-- Node.js + Express.js
-- CORS enabled for local development
-- RESTful API architecture
+Backend:
+- Node.js + Express
+- Canvas API integration
+- Local Ollama-compatible chat path for Jarvis
 
-## Getting Started
+## Installation
 
-### Prerequisites
-- Node.js (v14+)
-- npm (v6+)
-
-### Installation
-
-1. Clone or navigate to the project:
+1. Open the project:
 ```bash
 cd "AI Calender"
 ```
@@ -47,205 +41,124 @@ cd "AI Calender"
 npm run install-all
 ```
 
-This will install both backend and frontend dependencies.
+## Jarvis Local LLM Setup
 
-### Canvas Integration Setup
+This calendar app supports the same simple local Jarvis setup pattern as the main project.
 
-1. **API Token**: Your Canvas API token is pre-filled in the application for convenience
-2. **Username**: Enter your TMCC Canvas username/email when connecting
-3. **Connect**: Click "Connect Canvas" to authenticate
-4. **Sync**: Use "Sync Assignments" to import your assignments
-5. **AI Scan**: Use "Scan Syllabus" on individual courses to extract deadlines
-
-### Manual Token Setup (if needed)
-
-If you need to use a different token:
-1. Go to Canvas Settings → Approved Integrations
-2. Generate a new access token
-3. Replace the token in the Canvas Settings form
-
-### Running the Application
-
-**Option 1: Run both simultaneously (from root)**
+1. Start Ollama:
 ```bash
-npm run dev
+ollama serve
+```
+
+2. Make sure the local model is available:
+```bash
+ollama pull qwen3:32b
+```
+
+3. Copy the example environment file if needed:
+```bash
+copy .env.example .env
+```
+
+4. Start the calendar app with the local Jarvis launcher:
+```powershell
+.\run_jarvis_calendar_local.ps1
+```
+
+Default local model environment:
+```bash
+AI_LOCAL_LLM_API_KEY=EMPTY
+AI_LOCAL_LLM_API_BASE=http://127.0.0.1:11434/v1
+AI_LOCAL_LLM_MODEL=qwen3:32b
+AI_LOCAL_LLM_TIMEOUT_SECONDS=240
+```
+
+This keeps the calendar repo ready to commit with the Ollama/Jarvis setup in repo files, while leaving the real `.env` ignored.
+
+## Running the Application
+
+Option 1: local Jarvis launcher
+```powershell
+.\run_jarvis_calendar_local.ps1
+```
+
+Option 2: run separately
+
+Backend:
+```bash
+npm start
+```
+
+Frontend dev client:
+```bash
 npm run client
 ```
 
-**Option 2: Run separately**
+Local URLs:
+- frontend dev client: `http://localhost:3000`
+- backend / built UI: `http://localhost:5000`
 
-Backend (from root):
-```bash
-npm start
-```
+## Canvas Integration Setup
 
-Frontend (from client folder):
-```bash
-cd client
-npm start
-```
+1. Enter your Canvas token in the Canvas settings panel
+2. Enter your username/email
+3. Connect Canvas
+4. Sync assignments
+5. Optionally use syllabus scan for extra deadline extraction
 
-The app will be available at `http://localhost:3000`
-Backend API runs on `http://localhost:5000`
+## Azure Deployment
 
-## Azure App Service Deployment
+To use the subscription calendar remotely, the backend must be reachable from the internet.
 
-To use the iPhone subscription calendar, the backend must be reachable from the internet. Azure App Service is a good fit for this project.
-
-### Recommended Setup
-
-1. Create an Azure App Service for Node.js
-2. Deploy this repository
-3. Use this build command:
-```bash
-npm install && npm run build:azure
-```
-4. Use this startup command:
-```bash
-npm start
-```
-
-### Required Environment Variables
-
-Set these in Azure App Service:
-
+Recommended Azure environment:
 ```bash
 NODE_ENV=production
 CALENDAR_FEED_TOKEN=your-long-random-secret-token
+AI_LOCAL_LLM_API_KEY=EMPTY
+AI_LOCAL_LLM_API_BASE=https://your-local-llm-proxy.example/v1
+AI_LOCAL_LLM_MODEL=qwen3:32b
 ```
 
-### Subscription Feed URL
-
-After deployment, your iPhone subscription URL will look like:
-
-```text
-https://your-app-name.azurewebsites.net/api/calendar/feed/your-long-random-secret-token
+Build command:
+```bash
+npm install && npm run build:azure
 ```
 
-Add it on iPhone with:
-
-1. Calendar
-2. Calendars
-3. Add Calendar
-4. Add Subscription Calendar
-
-### Persistence Warning
-
-Manual events and Canvas tokens are currently stored in:
-
-- `events.json`
-- `canvas-tokens.json`
-
-That is okay for development, but not ideal for long-term Azure hosting. For reliable persistence later, move them to a real datastore like Azure Blob Storage, Cosmos DB, or another hosted database.
-
-## Project Structure
-
+Startup command:
+```bash
+npm start
 ```
-AI Calender/
-├── server.js                 # Express backend server
-├── package.json             # Backend dependencies
-├── .env                     # Environment variables
-└── client/
-    ├── public/
-    │   └── index.html
-    ├── src/
-    │   ├── App.js
-    │   ├── App.css
-    │   ├── index.js
-    │   ├── index.css
-    │   └── components/
-    │       ├── Calendar.js      # Display events
-    │       ├── Calendar.css
-    │       ├── EventForm.js     # Add new events
-    │       ├── EventForm.css
-    │       ├── AIScheduler.js   # AI recommendations
-    │       └── AIScheduler.css
-    └── package.json         # Frontend dependencies
-```
+
+## Important Files
+
+- `server.js` - Express backend and Jarvis calendar chat logic
+- `.env.example` - commit-safe Ollama/Jarvis environment template
+- `run_jarvis_calendar_local.ps1` - local Ollama launcher
+- `client/src/App.js` - main UI
+- `client/src/components/ChatBot.js` - Jarvis chat widget
+- `client/src/components/AIScheduler.js` - Jarvis scheduler panel
+- `services/canvasService.js` - Canvas API wrapper
 
 ## API Endpoints
 
-### GET `/api/health`
-Check if the server is running
+- `GET /api/health`
+- `GET /api/events`
+- `POST /api/events`
+- `DELETE /api/events/:id`
+- `POST /api/chat`
+- `POST /api/canvas/auth`
+- `GET /api/canvas/status`
+- `POST /api/canvas/sync`
+- `POST /api/canvas/disconnect`
+- `GET /api/calendar/subscription`
+- `GET /api/calendar/feed/:token`
 
-### GET `/api/events`
-Fetch all events
+## Current Chat Capabilities
 
-### DELETE `/api/events/:id`
-Delete an event by ID
-```json
-// Success response
-{
-  "success": true,
-  "deletedId": "manual_1234567890_abc123def"
-}
-```
-
-### POST `/api/ai/syllabus-scan`
-Scan course syllabus for deadlines using AI
-```json
-{
-  "courseId": "12345",
-  "username": "student"
-}
-```
-Response:
-```json
-{
-  "success": true,
-  "courseId": "12345",
-  "syllabus": "...syllabus content...",
-  "extractedDeadlines": [
-    {
-      "description": "Final Project",
-      "type": "assignment",
-      "confidence": 0.7
-    }
-  ]
-}
-```
-
-### GET `/api/canvas/status`
-Check Canvas connection status
-Response:
-```json
-{
-  "connected": true,
-  "user": { "name": "John Doe", "email": "john@tmcc.edu" },
-  "connectedAt": "2026-03-30T19:40:00.000Z"
-}
-```
-
-### POST `/api/canvas/disconnect`
-Disconnect from Canvas and clear stored token
-Response:
-```json
-{
-  "success": true,
-  "message": "Canvas disconnected successfully"
-}
-```
-
-## Event Types
-
-- **class** - Regular class sessions
-- **assignment** - Homework and assignments
-- **exam** - Tests and exams
-- **study** - Study sessions
-
-## Future Enhancements
-
-- 📧 Email notifications for upcoming events
-- 🔗 Google Calendar integration
-- 💾 Persistent database (MongoDB/PostgreSQL)
-- 📊 Grade tracking and GPA calculator
-- 🎓 Course planning tools
-- 🤖 Advanced AI features with OpenAI/Claude API
-
-## License
-
-MIT
-
----
-
-**Happy studying! 🚀**
+Jarvis chat in the calendar app can currently:
+- list upcoming events
+- add simple events from natural phrases
+- delete events by title
+- report Canvas connection status
+- return the subscription feed URL
+- answer broader questions through the same local Ollama-backed Jarvis model

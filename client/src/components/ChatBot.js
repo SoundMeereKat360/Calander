@@ -6,7 +6,7 @@ const ChatBot = () => {
   const [messages, setMessages] = useState([
     {
       id: 1,
-      text: "Hi! I'm your AI Calendar Assistant. I can help you with scheduling, reminders, and managing your calendar. What can I do for you?",
+      text: "Hello. I'm Jarvis. I can help with scheduling, reminders, Canvas sync, and managing your calendar. What would you like to do?",
       sender: 'bot',
       timestamp: new Date()
     }
@@ -92,7 +92,7 @@ const ChatBot = () => {
       {isOpen && (
         <div className="chat-window">
           <div className="chat-header">
-            <h3>🤖 AI Calendar Assistant</h3>
+            <h3>🤖 Jarvis</h3>
             <span className="status">Online</span>
           </div>
 
@@ -132,7 +132,7 @@ const ChatBot = () => {
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="Ask me about your schedule..."
+              placeholder="Ask Jarvis about your schedule..."
               disabled={isTyping}
             />
             <button

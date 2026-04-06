@@ -142,6 +142,25 @@
   font-size: 0.95rem;
 }
 
+.export-btn {
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 15px;
+  background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+  color: white;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.export-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
+}
+
 .subscription-btn {
   width: 100%;
   padding: 12px 16px;
@@ -164,37 +183,6 @@
 .subscription-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-.subscription-refresh-btn {
-  width: 100%;
-  padding: 12px 16px;
-  border: 1px solid #cbd5e0;
-  border-radius: 15px;
-  background: #ffffff;
-  color: #0f172a;
-  font-size: 0.95rem;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-}
-
-.subscription-refresh-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  border-color: #93c5fd;
-  box-shadow: 0 10px 24px rgba(29, 78, 216, 0.12);
-}
-
-.subscription-refresh-btn:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-}
-
-.subscription-refresh-time {
-  font-size: 0.84rem;
-  color: #475569;
-  text-align: center;
 }
 
 @media (max-width: 1180px) {
