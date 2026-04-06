@@ -49,7 +49,7 @@ const sanitizeCanvasHtml = (html) => {
         node.removeAttribute(attr.name);
       }
 
-      if ((name === 'href' || name === 'src') && value.trim().toLowerCase().startsWith('javascript:')) {
+      if ((name === 'href' || name === 'src') && /^\s*javascript:/i.test(value)) {
         node.removeAttribute(attr.name);
       }
     });
@@ -106,7 +106,7 @@ const buildAssignmentSummary = (event) => {
   const text = extractPlainText(event?.description || '');
   const structuredSegments = extractStructuredSegments(event?.description || '');
   const sentenceSegments = text
-    .split(/(?<=[.!?])\s+|\s*[•\-]\s+|\s*\d+\.\s+/)
+    .split(/(?<=[.!?])\s+|\s*[•-]\s+|\s*\d+\.\s+/)
     .map((part) => part.trim())
     .filter(Boolean);
   const segments = [
@@ -154,7 +154,7 @@ const buildAssignmentSummary = (event) => {
       const heading = (value.heading || '').toLowerCase();
       const keywordHits = preferredKeywords.filter((word) => lower.includes(word)).length;
       const weakHits = weakKeywords.filter((word) => lower.includes(word)).length;
-      const listLikeBonus = value.tag === 'li' ? 3 : /^(\d+[\).]|[-*•])/.test(value.text) ? 2 : 0;
+      const listLikeBonus = value.tag === 'li' ? 3 : /^(\d+[).]|[-*•])/.test(value.text) ? 2 : 0;
       const submitBonus = /(submit|upload|reply|post|attach|complete)/.test(lower) ? 4 : 0;
       const headingBonus = /(instruction|requirement|submit|task|steps|checklist|what to do)/.test(heading) ? 5 : 0;
       const headingPenalty = /(overview|welcome|introduction|summary|module)/.test(heading) ? 3 : 0;
@@ -177,7 +177,7 @@ const buildAssignmentSummary = (event) => {
 
     const cleaned = item.text
       .replace(/\s+/g, ' ')
-      .replace(/^(\d+[\).]|[-*•])\s*/, '')
+      .replace(/^(\d+[).]|[-*•])\s*/, '')
       .trim();
     if (cleaned.length < 12) {
       return;
@@ -222,15 +222,13 @@ const Calendar = ({ events, onDeleteEvent, onToggleComplete, sortMode = 'date', 
     setExpandedDays((prev) => ({ ...prev, [dayKey]: !prev[dayKey] }));
   };
 
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
+  const formatDate = (dateString) => new Date(dateString).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 
   const formatEventTime = (event) => {
     if (event.deadlineOnly || event.id.startsWith('canvas_')) {
@@ -278,7 +276,9 @@ const Calendar = ({ events, onDeleteEvent, onToggleComplete, sortMode = 'date', 
     if (sortMode === 'class') {
       const classA = (a.course || '').toLowerCase();
       const classB = (b.course || '').toLowerCase();
-      if (classA !== classB) return classA.localeCompare(classB);
+      if (classA !== classB) {
+        return classA.localeCompare(classB);
+      }
       return new Date(a.start) - new Date(b.start);
     }
     return new Date(a.start) - new Date(b.start);
@@ -293,13 +293,15 @@ const Calendar = ({ events, onDeleteEvent, onToggleComplete, sortMode = 'date', 
       const eventStart = new Date(event.start);
       return eventStart >= weekStart && eventStart < weekEnd;
     }),
-    [sortedEvents, weekEnd, weekStart]
+    [sortedEvents, weekStart, weekEnd]
   );
 
   const groupedByDay = visibleEvents.reduce((acc, event) => {
     const date = new Date(event.start);
     const dayKey = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    if (!acc[dayKey]) acc[dayKey] = [];
+    if (!acc[dayKey]) {
+      acc[dayKey] = [];
+    }
     acc[dayKey].push(event);
     return acc;
   }, {});

@@ -71,54 +71,6 @@ const CanvasSettings = ({
     }, {})
   ));
 
-  useEffect(() => {
-    autoConnectAndSync();
-  }, []);
-
-  useEffect(() => {
-    const loadPreferences = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/api/preferences`);
-        if (!response.ok) {
-          return;
-        }
-        const data = await response.json();
-        if (Array.isArray(data.hiddenCourseNames)) {
-          setHiddenCourseNames(data.hiddenCourseNames);
-        }
-      } catch (error) {
-        console.error('Error loading calendar preferences:', error);
-      }
-    };
-
-    loadPreferences();
-  }, []);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(HIDDEN_COURSES_STORAGE_KEY, JSON.stringify(hiddenCourseNames));
-    } catch (error) {
-      console.error('Error saving hidden courses to storage:', error);
-    }
-
-    const syncPreferences = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/api/preferences`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ hiddenCourseNames })
-        });
-        if (response.ok) {
-          onPreferencesChanged?.();
-        }
-      } catch (syncError) {
-        console.error('Error syncing hidden courses to server:', syncError);
-      }
-    };
-
-    syncPreferences();
-  }, [hiddenCourseNames]);
-
   const visibleCourses = useMemo(
     () => courses.filter((course) => {
       if (!showTmccCourses && course.source === 'tmcc') {
@@ -166,7 +118,7 @@ const CanvasSettings = ({
     );
   };
 
-  const requestJson = async (url, options = {}, fallbackMessage = 'Request failed') => {
+  const requestJson = useCallback(async (url, options = {}, fallbackMessage = 'Request failed') => {
     const response = await fetch(url, options);
     const text = await response.text();
 
@@ -182,36 +134,9 @@ const CanvasSettings = ({
     }
 
     return data;
-  };
+  }, []);
 
-  const autoConnectAndSync = useCallback(async () => {
-    if (refreshInFlightRef.current) {
-      return;
-    }
-
-    refreshInFlightRef.current = true;
-    setLoading(true);
-    try {
-      resetAccountStates();
-      const connected = await connectAccounts();
-      if (connected.length === 0) {
-        setCourses([]);
-        return;
-      }
-
-      const loadedCourses = await loadCourses(connected);
-      if (loadedCourses.length > 0) {
-        onCoursesLoaded?.(loadedCourses);
-      }
-
-      await syncAssignments(connected);
-    } finally {
-      refreshInFlightRef.current = false;
-      setLoading(false);
-    }
-  }, [onCoursesLoaded, onSyncAssignments]);
-
-  const connectAccounts = async () => {
+  const connectAccounts = useCallback(async () => {
     const connected = [];
 
     for (const account of ACCOUNTS) {
@@ -247,9 +172,9 @@ const CanvasSettings = ({
     }
 
     return connected;
-  };
+  }, [requestJson]);
 
-  const loadCourses = async (accounts) => {
+  const loadCourses = useCallback(async (accounts) => {
     const allCourses = [];
 
     for (const account of accounts) {
@@ -286,9 +211,9 @@ const CanvasSettings = ({
 
     setCourses(allCourses);
     return allCourses;
-  };
+  }, [requestJson]);
 
-  const syncAssignments = async (accounts = connectedAccounts) => {
+  const syncAssignments = useCallback(async (accounts = connectedAccounts) => {
     const allEvents = [];
 
     for (const account of accounts) {
@@ -324,7 +249,82 @@ const CanvasSettings = ({
 
     onSyncAssignments?.(allEvents);
     setLastSync(new Date());
-  };
+  }, [connectedAccounts, onSyncAssignments, requestJson]);
+
+  const autoConnectAndSync = useCallback(async () => {
+    if (refreshInFlightRef.current) {
+      return;
+    }
+
+    refreshInFlightRef.current = true;
+    setLoading(true);
+    try {
+      resetAccountStates();
+      const connected = await connectAccounts();
+      if (connected.length === 0) {
+        setCourses([]);
+        return;
+      }
+
+      const loadedCourses = await loadCourses(connected);
+      if (loadedCourses.length > 0) {
+        onCoursesLoaded?.(loadedCourses);
+      }
+
+      await syncAssignments(connected);
+    } finally {
+      refreshInFlightRef.current = false;
+      setLoading(false);
+    }
+  }, [connectAccounts, loadCourses, onCoursesLoaded, syncAssignments]);
+
+  useEffect(() => {
+    autoConnectAndSync();
+  }, [autoConnectAndSync]);
+
+  useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/preferences`);
+        if (!response.ok) {
+          return;
+        }
+        const data = await response.json();
+        if (Array.isArray(data.hiddenCourseNames)) {
+          setHiddenCourseNames(data.hiddenCourseNames);
+        }
+      } catch (error) {
+        console.error('Error loading calendar preferences:', error);
+      }
+    };
+
+    loadPreferences();
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(HIDDEN_COURSES_STORAGE_KEY, JSON.stringify(hiddenCourseNames));
+    } catch (error) {
+      console.error('Error saving hidden courses to storage:', error);
+    }
+
+    const syncPreferences = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/preferences`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hiddenCourseNames })
+        });
+        if (response.ok) {
+          onPreferencesChanged?.();
+        }
+      } catch (syncError) {
+        console.error('Error syncing hidden courses to server:', syncError);
+      }
+    };
+
+    syncPreferences();
+  }, [hiddenCourseNames, onPreferencesChanged]);
 
   const handleSync = async () => {
     await autoConnectAndSync();

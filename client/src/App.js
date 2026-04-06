@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import './App.css';
 import Calendar from './components/Calendar';
 import EventForm from './components/EventForm';
@@ -45,10 +45,36 @@ function App() {
   const [primaryUserName, setPrimaryUserName] = useState('');
   const [subscriptionUrl, setSubscriptionUrl] = useState('');
 
+  const getDefaultColor = (courseName) => {
+    const palette = ['#667eea', '#38a169', '#f6ad55', '#ed64a6', '#2b6cb0', '#d53f8c', '#4a5568', '#2c7a7b'];
+    const index = Math.abs(Array.from(courseName || 'A').reduce((acc, ch) => acc + ch.charCodeAt(0), 0)) % palette.length;
+    return palette[index];
+  };
+
+  const fetchEvents = useCallback(async () => {
+    try {
+      const response = await fetch('/api/events');
+      const data = await response.json();
+      setEvents(data.events || []);
+    } catch (error) {
+      console.error('Error fetching events:', error);
+    }
+  }, []);
+
+  const fetchSubscriptionUrl = useCallback(async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/calendar/subscription');
+      const data = await response.json();
+      setSubscriptionUrl(data.feedUrl || '');
+    } catch (error) {
+      console.error('Error fetching subscription URL:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchEvents();
     fetchSubscriptionUrl();
-  }, []);
+  }, [fetchEvents, fetchSubscriptionUrl]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setHeaderTime(new Date()), 1000);
@@ -58,32 +84,6 @@ function App() {
   const dayStamp = `${headerTime.getFullYear()}-${headerTime.getMonth()}-${headerTime.getDate()}`;
   const quoteIndex = Math.abs(Array.from(dayStamp).reduce((sum, ch) => sum + ch.charCodeAt(0), 0)) % DAILY_QUOTES.length;
   const headerQuote = DAILY_QUOTES[quoteIndex];
-
-  const getDefaultColor = (courseName) => {
-    const palette = ['#667eea', '#38a169', '#f6ad55', '#ed64a6', '#2b6cb0', '#d53f8c', '#4a5568', '#2c7a7b'];
-    const index = Math.abs(Array.from(courseName || 'A').reduce((acc, ch) => acc + ch.charCodeAt(0), 0)) % palette.length;
-    return palette[index];
-  };
-
-  const fetchEvents = async () => {
-    try {
-      const response = await fetch('/api/events');
-      const data = await response.json();
-      setEvents(data.events || []);
-    } catch (error) {
-      console.error('Error fetching events:', error);
-    }
-  };
-
-  const fetchSubscriptionUrl = async () => {
-    try {
-      const response = await fetch('http://localhost:5000/api/calendar/subscription');
-      const data = await response.json();
-      setSubscriptionUrl(data.feedUrl || '');
-    } catch (error) {
-      console.error('Error fetching subscription URL:', error);
-    }
-  };
 
   const addEvent = async (event) => {
     try {
