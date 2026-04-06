@@ -1,6 +1,35 @@
 import React, { useMemo, useState } from 'react';
 import './Calendar.css';
 
+const addDays = (date, days) => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+};
+
+const startOfWeek = (date) => {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  next.setDate(next.getDate() - next.getDay());
+  return next;
+};
+
+const formatWeekRange = (start, endExclusive) => {
+  const end = addDays(endExclusive, -1);
+  const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+  const sameYear = start.getFullYear() === end.getFullYear();
+
+  if (sameMonth) {
+    return `${start.toLocaleDateString('en-US', { month: 'short' })} ${start.getDate()}-${end.getDate()}, ${start.getFullYear()}`;
+  }
+
+  if (sameYear) {
+    return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${start.getFullYear()}`;
+  }
+
+  return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+};
+
 const sanitizeCanvasHtml = (html) => {
   if (!html) {
     return '';
@@ -20,8 +49,7 @@ const sanitizeCanvasHtml = (html) => {
         node.removeAttribute(attr.name);
       }
 
-      const normalizedValue = value.trim().toLowerCase();
-      if ((name === 'href' || name === 'src') && normalizedValue.startsWith(`java${'script:'}`)) {
+      if ((name === 'href' || name === 'src') && value.trim().toLowerCase().startsWith('javascript:')) {
         node.removeAttribute(attr.name);
       }
     });
@@ -78,7 +106,7 @@ const buildAssignmentSummary = (event) => {
   const text = extractPlainText(event?.description || '');
   const structuredSegments = extractStructuredSegments(event?.description || '');
   const sentenceSegments = text
-    .split(/(?<=[.!?])\s+|\s*[•-]\s+|\s*\d+\.\s+/)
+    .split(/(?<=[.!?])\s+|\s*[•\-]\s+|\s*\d+\.\s+/)
     .map((part) => part.trim())
     .filter(Boolean);
   const segments = [
@@ -126,7 +154,7 @@ const buildAssignmentSummary = (event) => {
       const heading = (value.heading || '').toLowerCase();
       const keywordHits = preferredKeywords.filter((word) => lower.includes(word)).length;
       const weakHits = weakKeywords.filter((word) => lower.includes(word)).length;
-      const listLikeBonus = value.tag === 'li' ? 3 : /^(\d+[).]|[-*•])/.test(value.text) ? 2 : 0;
+      const listLikeBonus = value.tag === 'li' ? 3 : /^(\d+[\).]|[-*•])/.test(value.text) ? 2 : 0;
       const submitBonus = /(submit|upload|reply|post|attach|complete)/.test(lower) ? 4 : 0;
       const headingBonus = /(instruction|requirement|submit|task|steps|checklist|what to do)/.test(heading) ? 5 : 0;
       const headingPenalty = /(overview|welcome|introduction|summary|module)/.test(heading) ? 3 : 0;
@@ -149,7 +177,7 @@ const buildAssignmentSummary = (event) => {
 
     const cleaned = item.text
       .replace(/\s+/g, ' ')
-      .replace(/^(\d+[).]|[-*•])\s*/, '')
+      .replace(/^(\d+[\).]|[-*•])\s*/, '')
       .trim();
     if (cleaned.length < 12) {
       return;
@@ -188,6 +216,7 @@ const getCourseTag = (courseName, fallbackType) => {
 const Calendar = ({ events, onDeleteEvent, onToggleComplete, sortMode = 'date', courseColors = {} }) => {
   const [expandedDays, setExpandedDays] = useState({});
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const toggleDay = (dayKey) => {
     setExpandedDays((prev) => ({ ...prev, [dayKey]: !prev[dayKey] }));
@@ -255,7 +284,19 @@ const Calendar = ({ events, onDeleteEvent, onToggleComplete, sortMode = 'date', 
     return new Date(a.start) - new Date(b.start);
   });
 
-  const groupedByDay = sortedEvents.reduce((acc, event) => {
+  const weekStart = useMemo(() => addDays(startOfWeek(new Date()), weekOffset * 7), [weekOffset]);
+  const weekEnd = useMemo(() => addDays(weekStart, 7), [weekStart]);
+  const weekLabel = useMemo(() => formatWeekRange(weekStart, weekEnd), [weekStart, weekEnd]);
+
+  const visibleEvents = useMemo(
+    () => sortedEvents.filter((event) => {
+      const eventStart = new Date(event.start);
+      return eventStart >= weekStart && eventStart < weekEnd;
+    }),
+    [sortedEvents, weekEnd, weekStart]
+  );
+
+  const groupedByDay = visibleEvents.reduce((acc, event) => {
     const date = new Date(event.start);
     const dayKey = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     if (!acc[dayKey]) acc[dayKey] = [];
@@ -268,10 +309,23 @@ const Calendar = ({ events, onDeleteEvent, onToggleComplete, sortMode = 'date', 
   return (
     <>
       <div className="calendar-container">
-        <h2>Your Calendar</h2>
+        <div className="calendar-header">
+          <div>
+            <h2>Your Calendar</h2>
+            <div className="calendar-week-label">{weekLabel}</div>
+          </div>
+          <div className="calendar-nav">
+            <button type="button" className="calendar-nav-btn" onClick={() => setWeekOffset((prev) => prev - 1)}>
+              Back
+            </button>
+            <button type="button" className="calendar-nav-btn" onClick={() => setWeekOffset((prev) => prev + 1)}>
+              Next
+            </button>
+          </div>
+        </div>
 
-        {events.length === 0 ? (
-          <p className="no-events">No events scheduled. Create one to get started!</p>
+        {visibleEvents.length === 0 ? (
+          <p className="no-events">No assignments or events are scheduled for this week.</p>
         ) : (
           <div className="days-grid">
             {dayKeys.map((day) => {
